@@ -128,7 +128,23 @@ function up() {
 }
 
 function scale() {
-    echo $#
+    NGINX_SIZE=$1
+    PHP_SIZE=$2
+
+    if [ -z "${NGINX_SIZE}" ]; then
+        echo "Usage: scale <nginx_size> [php_size]"; exit 1
+    elif [ "${NGINX_SIZE}" -gt "${SWARM_SIZE}" ]; then
+        SCALE_NGINX="nginx=${SWARM_SIZE}"
+    fi
+
+    if [ "${PHP_SIZE}" -gt 1 ]; then
+        SCALE_PHP="php=${PHP_SIZE}"
+    fi
+
+    eval "$(docker-machine env --swarm master)"
+    set -xe
+    docker-compose scale ${SCALE_NGINX} ${SCALE_PHP}
+    set +xe
 }
 
 function down() {
@@ -148,6 +164,7 @@ function main() {
         remove)     remove ;;
         up)         up ;;
         scale)      scale "$@" ;;
+        env)        docker-machine env --swarm master ;;
         down)       down ;;
         publish)    publish ;;
         *)          echo "Usage: $0 <create|remove|up|scale|down|publish>"; exit 1 ;;

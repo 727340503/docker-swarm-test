@@ -1,22 +1,25 @@
 version: '2'
 services:
     nginx:
-        image: twang2218/lnmp-nginx
+        image: twang2218/lnmp-nginx:latest
+        # build:
+        #     context: ./nginx-php
+        #     dockerfile: Dockerfile.nginx
         ports:
             - "80:80"
-        links:
-            - php
         networks:
             - frontend
     php:
-        image: twang2218/lnmp-php
-        links:
-            - mysql:mysql
+        image: twang2218/lnmp-php:latest
+        # build:
+        #     context: ./nginx-php
+        #     dockerfile: Dockerfile.php-alpine
         networks:
             - frontend
             - backend
     mysql:
-        image: twang2218/lnmp-mysql
+        image: twang2218/lnmp-mysql:latest
+        # build: ./mysql
         volumes:
             - mysql-data:/var/lib/mysql
         environment:

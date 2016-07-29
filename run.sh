@@ -1,67 +1,75 @@
 #!/bin/bash
 
-# Swarm Size.
+# Swarm Size. (default is 3)
 if [ -z "${SWARM_SIZE}" ]; then
     SWARM_SIZE=3
 fi
 
-#  or 'digitalocean'
+# By default, 'virtualbox' will be used, you can set 'DOCKER_MACHINE_DRIVER' to override it.
 if [ -z "${DOCKER_MACHINE_DRIVER}" ]; then
     DOCKER_MACHINE_DRIVER=virtualbox
 fi
 
-function build {
+
+##############################
+#      Image Management      #
+##############################
+
+
+function build() {
     # Build images
-    docker build -t ${REGISTRY_HOST}/${REGISTRY_USER}/lnmp-nginx:latest -f nginx-php/Dockerfile.nginx ./nginx-php
-    docker build -t ${REGISTRY_HOST}/${REGISTRY_USER}/lnmp-php:latest -f nginx-php/Dockerfile.php ./nginx-php
-    docker build -t ${REGISTRY_HOST}/${REGISTRY_USER}/lnmp-mysql:latest -f mysql/Dockerfile ./mysql
+    docker build -t ${REGISTRY_USER}/lnmp-nginx:latest -f nginx-php/Dockerfile.nginx ./nginx-php
+    docker build -t ${REGISTRY_USER}/lnmp-php:latest -f nginx-php/Dockerfile.php ./nginx-php
+    docker build -t ${REGISTRY_USER}/lnmp-mysql:latest -f mysql/Dockerfile ./mysql
 }
 
-function push {
+function push() {
     # Push to the registry
-    docker push ${REGISTRY_HOST}/${REGISTRY_USER}/lnmp-nginx:latest
-    docker push ${REGISTRY_HOST}/${REGISTRY_USER}/lnmp-php:latest
-    docker push ${REGISTRY_HOST}/${REGISTRY_USER}/lnmp-mysql:latest
+    docker push ${REGISTRY_USER}/lnmp-nginx:latest
+    docker push ${REGISTRY_USER}/lnmp-php:latest
+    docker push ${REGISTRY_USER}/lnmp-mysql:latest
 }
 
-function publish {
-    # By default, `docker.io` will be used as the docker registry
-    REGISTRY_HOST=docker.io
-
-    # Login first, so we can get the user name directly
-    docker login ${REGISTRY_HOST}
-
+function publish() {
     # Get username
     REGISTRY_USER=$(docker info | awk '/Username/ { print $2 }')
 
-    # Build
+    if [ -z "${REGISTRY_USER}" ]; then
+        # Login first, so we can get the user name directly
+        echo "Please login first: 'docker login'"
+        exit 1
+    fi
+
+    # Build Images
     build
 
-    # Push
+    # Push to Registry
     push
 }
 
-function create_store {
+##############################
+#  Swarm Cluster Preparation #
+##############################
+
+function create_store() {
     NAME=$1
     docker-machine create -d ${DOCKER_MACHINE_DRIVER} ${NAME}
     eval $(docker-machine env ${NAME})
     HostIP=$(docker-machine ip ${NAME})
     export KVSTORE="etcd://${HostIP}:2379"
-    echo "Wait 10 seconds for the docker daemon ..."
-    sleep 10
     docker run -d \
         -p 4001:4001 -p 2380:2380 -p 2379:2379 \
         --restart=always \
         --name etcd \
-        quay.io/coreos/etcd \
-            -initial-advertise-peer-urls http://${HostIP}:2380 \
-            -initial-cluster default=http://${HostIP}:2380 \
-            -advertise-client-urls http://${HostIP}:2379,http://${HostIP}:4001 \
-            -listen-client-urls http://0.0.0.0:2379,http://0.0.0.0:4001 \
-            -listen-peer-urls http://0.0.0.0:2380
+        quay.io/coreos/etcd:v2.3.7 \
+            --initial-advertise-peer-urls http://${HostIP}:2380 \
+            --initial-cluster default=http://${HostIP}:2380 \
+            --advertise-client-urls http://${HostIP}:2379,http://${HostIP}:4001 \
+            --listen-client-urls http://0.0.0.0:2379,http://0.0.0.0:4001 \
+            --listen-peer-urls http://0.0.0.0:2380
 }
 
-function create_master {
+function create_master() {
     NAME=$1
     echo "kvstore is ${KVSTORE}"
     # eth1 on virtualbox, eth0 on digitalocean
@@ -74,7 +82,7 @@ function create_master {
         ${NAME}
 }
 
-function create_node {
+function create_node() {
     NAME=$1
     echo "kvstore is ${KVSTORE}"
     # eth1 on virtualbox, eth0 on digitalocean
@@ -86,10 +94,10 @@ function create_node {
         ${NAME}
 }
 
-function create {
+function create() {
     create_store kvstore
     create_master master
-    for i in $(seq ${SWARM_SIZE})
+    for i in $(seq ${SIZE})
     do
         create_node node${i} &
     done
@@ -97,8 +105,8 @@ function create {
     wait
 }
 
-function destroy {
-    for i in $(seq ${SWARM_SIZE})
+function destroy() {
+    for i in $(seq ${SIZE})
     do
         docker-machine rm -y node${i} || true
     done
@@ -106,27 +114,40 @@ function destroy {
     docker-machine rm -y kvstore || true
 }
 
+##############################
+#     Service Management     #
+##############################
 
-function up {
+function up() {
     eval $(docker-machine env --swarm master)
     docker-compose up -d
 }
 
-function down {
+function scale() {
+    echo $#
+}
+
+function down() {
     eval $(docker-machine env --swarm master)
     docker-compose down
 }
 
-function usage {
-    echo "Usage: $1 {create|destroy|up|down|publish}"
+##############################
+#         Entrypoint         #
+##############################
+
+function main() {
+    Command=$1
+    shift
+    case "${Command}" in
+        create)     create ;;
+        destroy)    destroy ;;
+        up)         up ;;
+        scale)       scale $@ ;;
+        down)       down ;;
+        publish)    publish ;;
+        *)          echo "Usage: $0 <create|destroy|up|scale|down|publish>"; exit 1 ;;
+    esac
 }
 
-# Handle subcommand
-case "$1" in
-    create)     create ;;
-    destroy)    destroy ;;
-    up)         up ;;
-    down)       down ;;
-    publish)    publish ;;
-    *)          usage $0 ;;
-esac
+main $@

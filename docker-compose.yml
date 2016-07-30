@@ -15,7 +15,7 @@ services:
         image: twang2218/lnmp-php:latest
         # build:
         #     context: ./nginx-php
-        #     dockerfile: Dockerfile.php-alpine
+        #     dockerfile: Dockerfile.php
         networks:
             - frontend
             - backend

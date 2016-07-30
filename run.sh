@@ -23,7 +23,7 @@ MACHINE_OPTS="${STORAGE_OPTS} ${INSECURE_OPTS} ${REGISTRY_MIRROR_OPTS}"
 function build() {
     # Build images
     docker build --pull -t ${REGISTRY_USER}/lnmp-nginx:latest -f nginx-php/Dockerfile.nginx ./nginx-php
-    docker build --pull -t ${REGISTRY_USER}/lnmp-php:latest -f nginx-php/Dockerfile.php-alpine ./nginx-php
+    docker build --pull -t ${REGISTRY_USER}/lnmp-php:latest -f nginx-php/Dockerfile.php ./nginx-php
     docker build --pull -t ${REGISTRY_USER}/lnmp-mysql:latest -f mysql/Dockerfile ./mysql
 }
 

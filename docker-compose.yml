@@ -9,6 +9,8 @@ services:
             - "80:80"
         networks:
             - frontend
+        depends_on:
+            - php
     php:
         image: twang2218/lnmp-php:latest
         # build:
@@ -17,6 +19,8 @@ services:
         networks:
             - frontend
             - backend
+        depends_on:
+            - mysql
     mysql:
         image: twang2218/lnmp-mysql:latest
         # build: ./mysql
@@ -30,6 +34,4 @@ volumes:
     mysql-data: {}
 networks:
     frontend:
-        driver: overlay
     backend:
-        driver: overlay

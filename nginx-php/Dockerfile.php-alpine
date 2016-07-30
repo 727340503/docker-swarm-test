@@ -1,7 +1,14 @@
 FROM php:7-fpm-alpine
 RUN set -xe \
+# "安装 php 以及编译构建组件所需包"
+# "运行依赖"
+    && apk add --no-cache \
+        freetype \
+        libjpeg-turbo \
+        libmcrypt \
+        libpng \
 # "构建依赖"
-    && buildDeps=" \
+    && apk add --no-cache \
         --virtual .build-deps \
         $PHPIZE_DEPS \
         php5-dev \
@@ -9,16 +16,6 @@ RUN set -xe \
         libjpeg-turbo-dev \
         libmcrypt-dev \
         libpng-dev \
-    " \
-# "运行依赖"
-    && runtimeDeps=" \
-        freetype \
-        libjpeg-turbo \
-        libmcrypt \
-        libpng \
-    " \
-# "安装 php 以及编译构建组件所需包"
-    && apk add --no-cache ${runtimeDeps} ${buildDeps} \
 # "编译安装 php 组件"
     && docker-php-ext-install iconv mcrypt mysqli pdo pdo_mysql zip \
     && docker-php-ext-configure gd \
@@ -30,4 +27,4 @@ RUN set -xe \
     && docker-php-source delete
 
 COPY ./php.conf /usr/local/etc/php/conf.d/php.conf
-COPY ./site /var/www/site
+COPY ./site /usr/share/nginx/html

@@ -10,11 +10,11 @@ if [ -z "${DOCKER_MACHINE_DRIVER}" ]; then
     DOCKER_MACHINE_DRIVER=virtualbox
 fi
 
-# CN_SPECIAL_OPTS="--engine-registry-mirror https://jxus37ac.mirror.aliyuncs.com"
+# REGISTRY_MIRROR_OPTS="--engine-registry-mirror https://jxus37ac.mirror.aliyuncs.com"
 INSECURE_OPTS="--engine-insecure-registry 192.168.99.0/24"
 # STORAGE_OPTS="--engine-storage-driver overlay2"
 
-MACHINE_OPTS="${STORAGE_OPTS} ${INSECURE_OPTS} ${CN_SPECIAL_OPTS}"
+MACHINE_OPTS="${STORAGE_OPTS} ${INSECURE_OPTS} ${REGISTRY_MIRROR_OPTS}"
 
 ##############################
 #      Image Management      #
@@ -22,9 +22,9 @@ MACHINE_OPTS="${STORAGE_OPTS} ${INSECURE_OPTS} ${CN_SPECIAL_OPTS}"
 
 function build() {
     # Build images
-    docker build -t ${REGISTRY_USER}/lnmp-nginx:latest -f nginx-php/Dockerfile.nginx ./nginx-php
-    docker build -t ${REGISTRY_USER}/lnmp-php:latest -f nginx-php/Dockerfile.php-alpine ./nginx-php
-    docker build -t ${REGISTRY_USER}/lnmp-mysql:latest -f mysql/Dockerfile ./mysql
+    docker build --pull -t ${REGISTRY_USER}/lnmp-nginx:latest -f nginx-php/Dockerfile.nginx ./nginx-php
+    docker build --pull -t ${REGISTRY_USER}/lnmp-php:latest -f nginx-php/Dockerfile.php-alpine ./nginx-php
+    docker build --pull -t ${REGISTRY_USER}/lnmp-mysql:latest -f mysql/Dockerfile ./mysql
 }
 
 function push() {
@@ -44,22 +44,21 @@ function publish() {
         exit 1
     fi
 
-    # Build Images
-    build
-
-    # Push to Registry
-    push
+    # Build & Push
+    build && push
 }
 
 ##############################
 #  Swarm Cluster Preparation #
 ##############################
 
-function create_store() {
+function create_assistant() {
     NAME=$1
     docker-machine create -d ${DOCKER_MACHINE_DRIVER} ${MACHINE_OPTS} ${NAME}
     eval "$(docker-machine env ${NAME})"
     HostIP="$(docker-machine ip ${NAME})"
+
+    echo "Create etcd as a Key-value store"
     export KVSTORE="etcd://${HostIP}:2379"
     docker run -d \
         -p 4001:4001 -p 2380:2380 -p 2379:2379 \
@@ -71,6 +70,16 @@ function create_store() {
             --advertise-client-urls http://${HostIP}:2379,http://${HostIP}:4001 \
             --listen-client-urls http://0.0.0.0:2379,http://0.0.0.0:4001 \
             --listen-peer-urls http://0.0.0.0:2380
+
+    echo "Create a registry mirror"
+    docker run -d \
+        -p 5000:5000 \
+        -e REGISTRY_STORAGE_CACHE_BLOBDESCRIPTOR=inmemory \
+        -e REGISTRY_PROXY_REMOTEURL=https://registry-1.docker.io \
+        --name registry \
+        registry
+    REGISTRY_MIRROR_OPTS="--engine-registry-mirror http://${HostIP}:5000"
+    export MACHINE_OPTS="${MACHINE_OPTS} ${REGISTRY_MIRROR_OPTS}"
 }
 
 function create_master() {
@@ -99,7 +108,7 @@ function create_node() {
 }
 
 function create() {
-    create_store kvstore
+    create_assistant assistant
     create_master master
     for i in $(seq 1 ${SWARM_SIZE})
     do
@@ -115,7 +124,7 @@ function remove() {
         docker-machine rm -y node${i} || true
     done
     docker-machine rm -y master || true
-    docker-machine rm -y kvstore || true
+    docker-machine rm -y assistant || true
 }
 
 ##############################
@@ -135,6 +144,8 @@ function scale() {
         echo "Usage: scale <nginx_size> [php_size]"; exit 1
     elif [ "${NGINX_SIZE}" -gt "${SWARM_SIZE}" ]; then
         SCALE_NGINX="nginx=${SWARM_SIZE}"
+    else
+        SCALE_NGINX="nginx=${NGINX_SIZE}"
     fi
 
     if [ "${PHP_SIZE}" -gt 1 ]; then

@@ -45,6 +45,11 @@ function publish() {
     fi
 
     # Build & Push
+    # More clean way would be:
+    #
+    #   docker-compose build && docker-compose push
+    #
+    # Just remember replace the 'twang2218' in the 'docker-compose.yml' with your hub username.
     build && push
 }
 
@@ -133,6 +138,9 @@ function remove() {
 
 function up() {
     eval "$(docker-machine env --swarm master)"
+    # Pull Images from hub
+    docker-compose pull
+    # Start Image
     docker-compose up -d
 }
 
